@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Paint App مودرن</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#7c3aed; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#071126 0%, #071a2b 100%);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans',sans-serif;color:#e6eef8}
+    .app{max-width:1200px;margin:28px auto;padding:20px;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);box-shadow:0 8px 30px rgba(2,6,23,0.6);display:grid;grid-template-columns:320px 1fr;gap:18px}
+    .panel{background:var(--card);padding:16px;border-radius:12px;min-height:520px}
+    h2{margin:0 0 8px 0;font-size:18px}
+    .toolbar{display:flex;flex-direction:column;gap:12px}
+    .row{display:flex;gap:8px;align-items:center}
+    .palette{display:flex;gap:8px;flex-wrap:wrap}
+    .swatch{width:34px;height:34px;border-radius:8px;cursor:pointer;border:2px solid transparent}
+    .swatch.selected{outline:3px solid rgba(255,255,255,0.06)}
+    input[type=range]{width:100%}
+    button{background:var(--glass);border:1px solid rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;color:var(--muted);cursor:pointer}
+    button.active{background:linear-gradient(90deg,var(--accent),#4f46e5);color:white;border:none}
+    .tools{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .bottom-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+    /* Canvas area */
+    .stage{position:relative;border-radius:12px;overflow:hidden;background:linear-gradient(180deg,#0b1626,#061224);display:flex;align-items:center;justify-content:center}
+    canvas{background:white;touch-action:none}
+    .controls-top{position:absolute;left:12px;top:12px;display:flex;gap:8px;align-items:center}
+    .mini{padding:6px 8px;font-size:13px}
+    .right-side{display:flex;flex-direction:column;gap:12px}
+    .status{font-size:13px;color:var(--muted)}
+    .flex{display:flex;gap:8px}
+    .hint{font-size:12px;color:var(--muted)}
+
+    /* Responsive */
+    @media (max-width:900px){.app{grid-template-columns:1fr;}.panel{min-height:auto}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel">
+      <h2>أدوات الرسم — واجهة مودرن</h2>
+      <div class="toolbar">
+        <div>
+          <div class="row"><label class="hint">ألوان سريعة:</label></div>
+          <div class="palette" id="palette"></div>
+        </div>
+
+        <div>
+          <div class="row"><label class="hint">أختر لون أو استخدم أداة Eyedropper</label></div>
+          <div class="row"><input id="colorInput" type="color" value="#111111"></div>
+        </div>
+
+        <div>
+          <div class="row"><label class="hint">حجم الفرشاة: <span id="brushSizeLabel">12</span></label></div>
+          <input id="brushSize" type="range" min="1" max="150" value="12">
+        </div>
+
+        <div>
+          <div class="row"><label class="hint">شفافية الفرشاة: <span id="opacityLabel">100%</span></label></div>
+          <input id="opacity" type="range" min="1" max="100" value="100">
+        </div>
+
+        <div>
+          <div class="row"><label class="hint">أشكال الفرش:</label></div>
+          <div class="tools" id="brushShapes">
+            <button data-tool="brush" class="mini active">فرشاة</button>
+            <button data-tool="eraser" class="mini">ممحاة</button>
+            <button data-tool="line" class="mini">خط</button>
+            <button data-tool="rect" class="mini">مربع</button>
+            <button data-tool="circle" class="mini">دائرة</button>
+            <button data-tool="text" class="mini">نص</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="row"><label class="hint">خيارات</label></div>
+          <div class="bottom-actions">
+            <button id="undoBtn" class="mini">تراجع (Ctrl+Z)</button>
+            <button id="redoBtn" class="mini">إعادة</button>
+            <button id="clearBtn" class="mini">مسح</button>
+            <button id="saveBtn" class="mini">حفظ كصورة (S)</button>
+            <button id="gridToggle" class="mini">شبكة</button>
+            <button id="symToggle" class="mini">تناظر</button>
+            <button id="eyedropper" class="mini">مقاط</button>
+            <button id="fillBtn" class="mini">دلو تعبئة</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="row"><label class="hint">خيارات إضافية</label></div>
+          <div class="row"><button id="bgPattern" class="mini">خلفية شبكية</button><button id="exportSVG" class="mini">تصدير SVG</button></div>
+        </div>
+
+        <div>
+          <p class="status">ملاحظة: التطبيق شغال بالكامل على المتصفح — تقدر تستخدمه بدون باك إند.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel stage" id="stage">
+      <div class="controls-top">
+        <div class="row"><div class="hint">أداة حالية: </div><div id="currentTool" class="hint">فرشاة</div></div>
+      </div>
+      <canvas id="canvas"></canvas>
+      <div class="right-side" style="position:absolute;right:12px;top:12px;">
+        <div style="background:var(--glass);padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);">
+          <div class="hint">الطبقة: الخلفية البيضاء</div>
+          <div class="hint">الخط: اضغط على المكان في اللوحة لإضافة نص</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ====== عناصر DOM ======
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const colorInput = document.getElementById('colorInput');
+    const brushSize = document.getElementById('brushSize');
+    const brushSizeLabel = document.getElementById('brushSizeLabel');
+    const opacity = document.getElementById('opacity');
+    const opacityLabel = document.getElementById('opacityLabel');
+    const palette = document.getElementById('palette');
+    const brushShapes = document.getElementById('brushShapes');
+    const currentToolLabel = document.getElementById('currentTool');
+
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const gridToggle = document.getElementById('gridToggle');
+    const symToggle = document.getElementById('symToggle');
+    const eyedropper = document.getElementById('eyedropper');
+    const fillBtn = document.getElementById('fillBtn');
+    const bgPattern = document.getElementById('bgPattern');
+    const exportSVG = document.getElementById('exportSVG');
+
+    // ====== حالة التطبيق ======
+    let tool = 'brush';
+    let drawing = false;
+    let last = {x:0,y:0};
+    let color = colorInput.value;
+    let size = +brushSize.value;
+    let alpha = +opacity.value/100;
+    let history = [];
+    let historyIndex = -1;
+    let maxHistory = 30;
+    let showGrid = false;
+    let symmetry = false;
+    let eyedropperActive = false;
+    let fillActive = false;
+
+    // ====== إعداد الـ canvas لحجم الشاشة و DPI ======
+    function resizeCanvas(){
+      const container = canvas.parentElement.getBoundingClientRect();
+      const w = Math.max(600, container.width - 40);
+      const h = Math.max(400, window.innerHeight - 200);
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      redraw();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // ====== لوحة ألوان سريعة ======
+    const presets = ['#000000','#ffffff','#ff3b30','#ff9500','#ffcc00','#4cd964','#5ac8fa','#007aff','#5856d6','#ff2d55'];
+    function buildPalette(){
+      palette.innerHTML = '';
+      presets.forEach(c=>{
+        const el = document.createElement('div');
+        el.className='swatch';
+        el.style.background=c;
+        el.addEventListener('click',()=>{color=c;colorInput.value=c;updateSelected();});
+        palette.appendChild(el);
+      });
+      updateSelected();
+    }
+    function updateSelected(){
+      document.querySelectorAll('.swatch').forEach(s=>{s.classList.toggle('selected', s.style.backgroundColor === hexToRgb(color));});
+    }
+
+    function hexToRgb(hex){
+      // returns rgb(...) string for simple compare
+      const c = hex.replace('#','');
+      const r = parseInt(c.substring(0,2),16);
+      const g = parseInt(c.substring(2,4),16);
+      const b = parseInt(c.substring(4,6),16);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    // ====== أدوات ======
+    brushSize.addEventListener('input', e=>{size=+e.target.value;brushSizeLabel.textContent=size});
+    opacity.addEventListener('input', e=>{alpha=+e.target.value/100;opacityLabel.textContent=e.target.value+'%'});
+    colorInput.addEventListener('input', e=>{color=e.target.value; updateSelected();});
+
+    brushShapes.addEventListener('click', e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      document.querySelectorAll('#brushShapes button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      tool = btn.dataset.tool; currentToolLabel.textContent = btn.textContent;
+    });
+
+    // ====== رسم أساسي ======
+    function getPos(ev){
+      const rect = canvas.getBoundingClientRect();
+      const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
+      const y = (ev.touches ? ev.touches[0].clientY : ev.clientY) - rect.top;
+      return {x,y};
+    }
+
+    function startDraw(ev){
+      ev.preventDefault();
+      const p = getPos(ev);
+      drawing = true; last = p;
+      if(tool === 'text'){
+        const txt = prompt('اكتب النص اللي عايزه');
+        if(txt!==null){
+          ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.font = `${Math.max(12,size*2)}px sans-serif`;
+          ctx.fillText(txt, p.x, p.y); ctx.restore(); saveHistory();
+        }
+        drawing=false; return;
+      }
+      if(tool === 'fill'){
+        fillCanvasColor(p.x,p.y,color); saveHistory(); drawing=false; return;
+      }
+      if(tool === 'eyedropper'){
+        const d = ctx.getImageData(p.x,p.y,1,1).data; const hex = rgbToHex(d[0],d[1],d[2]); color = hex; colorInput.value = hex; eyedropperActive=false; updateSelected(); drawing=false; return;
+      }
+      if(tool === 'rect' || tool === 'circle' || tool==='line'){
+        // store start and wait for mouseup
+        drawing = true; startShape = p;
+      } else {
+        drawDot(p.x,p.y);
+      }
+    }
+    function moveDraw(ev){
+      if(!drawing) return;
+      const p = getPos(ev);
+      if(tool === 'brush' || tool === 'eraser'){
+        drawLine(last.x,last.y,p.x,p.y, tool === 'eraser');
+        if(symmetry) drawLine(canvas.width/Math.max(1,window.devicePixelRatio||1)-last.x,last.y, canvas.width/Math.max(1,window.devicePixelRatio||1)-p.x,p.y, tool === 'eraser');
+        last = p;
+      }
+    }
+    function endDraw(ev){
+      if(!drawing) return;
+      const p = getPos(ev);
+      if(tool === 'rect' || tool === 'circle' || tool==='line'){
+        drawShape(startShape, p, tool);
+      }
+      drawing = false; saveHistory();
+    }
+
+    function drawDot(x,y){
+      ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x,y,size/2,0,Math.PI*2); ctx.fill(); ctx.restore();
+      saveHistoryDebounced();
+    }
+
+    function drawLine(x1,y1,x2,y2, isEraser=false){
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin='round'; ctx.lineWidth = size; ctx.globalAlpha = alpha;
+      if(isEraser){ ctx.globalCompositeOperation = 'destination-out'; ctx.strokeStyle = 'rgba(0,0,0,1)'; }
+      else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = color; }
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.restore();
+    }
+
+    function drawShape(p1,p2,what){
+      ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = size; ctx.beginPath();
+      if(what==='rect'){
+        const x = Math.min(p1.x,p2.x), y=Math.min(p1.y,p2.y), w=Math.abs(p2.x-p1.x), h=Math.abs(p2.y-p1.y);
+        ctx.rect(x,y,w,h); ctx.stroke();
+      } else if(what==='circle'){
+        const cx=(p1.x+p2.x)/2, cy=(p1.y+p2.y)/2, rx=Math.abs(p2.x-p1.x)/2, ry=Math.abs(p2.y-p1.y)/2, r=Math.max(rx,ry);
+        ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+      } else if(what==='line'){
+        ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // ====== ملحقات ======
+    function rgbToHex(r,g,b){return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
+
+    function saveHistory(){
+      try{
+        if(historyIndex < history.length -1) history = history.slice(0, historyIndex+1);
+        history.push(canvas.toDataURL());
+        historyIndex = history.length-1;
+        if(history.length>maxHistory) history.shift();
+      }catch(e){console.warn('history save failed',e)}
+    }
+    // Debounce small continuous saves
+    let saveTimer = null;
+    function saveHistoryDebounced(){ clearTimeout(saveTimer); saveTimer = setTimeout(()=>saveHistory(), 500); }
+
+    function undo(){ if(historyIndex>0){ historyIndex--; loadFromDataURL(history[historyIndex]); }}
+    function redo(){ if(historyIndex < history.length-1){ historyIndex++; loadFromDataURL(history[historyIndex]); }}
+
+    function loadFromDataURL(dataURL){ const img = new Image(); img.onload = ()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0, canvas.width/ (window.devicePixelRatio||1), canvas.height/(window.devicePixelRatio||1)); } ; img.src = dataURL; }
+
+    undoBtn.addEventListener('click', undo); redoBtn.addEventListener('click', redo);
+    clearBtn.addEventListener('click', ()=>{ if(confirm('مسح اللوحة؟')){ ctx.clearRect(0,0,canvas.width,canvas.height); saveHistory(); }});
+    saveBtn.addEventListener('click', ()=>{
+      const link = document.createElement('a'); link.download = 'painting.png'; link.href = canvas.toDataURL('image/png'); link.click();
+    });
+
+    gridToggle.addEventListener('click', ()=>{ showGrid = !showGrid; gridToggle.classList.toggle('active', showGrid); redraw(); });
+    symToggle.addEventListener('click', ()=>{ symmetry = !symmetry; symToggle.classList.toggle('active', symmetry); });
+    eyedropper.addEventListener('click', ()=>{ eyedropperActive = true; tool = 'eyedropper'; currentToolLabel.textContent = 'Eyedropper'; });
+    fillBtn.addEventListener('click', ()=>{ tool = 'fill'; currentToolLabel.textContent = 'دلو تعبئة'; });
+    bgPattern.addEventListener('click', ()=>{ toggleBgPattern(); bgPattern.classList.toggle('active'); });
+    exportSVG.addEventListener('click', ()=>{ alert('تصدير SVG بسيط: سيتم تحويل محتوى الكانفاس لصورة وضمها داخل svg.'); const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}"><image href="${canvas.toDataURL()}" width="${canvas.width}" height="${canvas.height}"/></svg>`; const blob = new Blob([svg],{type:'image/svg+xml'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='drawing.svg'; a.click(); });
+
+    // Eyedropper + Fill implementation basic
+    function fillCanvasColor(x,y, fillColor){ // naive flood fill for demo (not super optimized)
+      try{
+        const w = canvas.width/(window.devicePixelRatio||1), h = canvas.height/(window.devicePixelRatio||1);
+        const img = ctx.getImageData(0,0,w,h);
+        const targetIdx = (Math.floor(y)*w + Math.floor(x))*4;
+        const tr = img.data[targetIdx], tg = img.data[targetIdx+1], tb = img.data[targetIdx+2], ta = img.data[targetIdx+3];
+        const newCol = hexToRgba(fillColor);
+        if(tr===newCol.r && tg===newCol.g && tb===newCol.b) return;
+        const stack = [[Math.floor(x),Math.floor(y)]];
+        while(stack.length){ const [px,py] = stack.pop(); if(px<0||py<0||px>=w||py>=h) continue; const idx=(py*w+px)*4; if(img.data[idx]===tr && img.data[idx+1]===tg && img.data[idx+2]===tb){ img.data[idx]=newCol.r; img.data[idx+1]=newCol.g; img.data[idx+2]=newCol.b; img.data[idx+3]=255; stack.push([px+1,py],[px-1,py],[px,py+1],[px,py-1]); } }
+        ctx.putImageData(img,0,0);
+      }catch(e){console.warn('fill failed',e)}
+    }
+    function hexToRgba(hex){ const c = hex.replace('#',''); return {r:parseInt(c.substring(0,2),16), g:parseInt(c.substring(2,4),16), b:parseInt(c.substring(4,6),16), a:255}};
+
+    // ====== إعادة رسم الواجهة (شبكة—خلفية) ======
+    function redraw(){
+      // preserve content: if no history yet, init white background
+      if(history.length===0){ ctx.fillStyle='white'; ctx.fillRect(0,0,canvas.width/(window.devicePixelRatio||1), canvas.height/(window.devicePixelRatio||1)); saveHistory(); }
+      // draw grid overlay if needed
+      if(showGrid){ drawGrid(); } else { // clear overlay by reloading current image
+        loadFromDataURL(history[historyIndex]);
+      }
+    }
+    function drawGrid(){
+      // combine current image and grid by drawing image then lines
+      const temp = new Image(); temp.onload = ()=>{
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(temp,0,0, canvas.width/(window.devicePixelRatio||1), canvas.height/(window.devicePixelRatio||1));
+        const step = 25; ctx.save(); ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.lineWidth=1; for(let x=0;x<canvas.width/(window.devicePixelRatio||1); x+=step){ ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5, canvas.height/(window.devicePixelRatio||1)); ctx.stroke(); }
+        for(let y=0;y<canvas.height/(window.devicePixelRatio||1); y+=step){ ctx.beginPath(); ctx.moveTo(0,y+0.5); ctx.lineTo(canvas.width/(window.devicePixelRatio||1), y+0.5); ctx.stroke(); }
+        ctx.restore();
+      };
+      temp.src = history[historyIndex] || canvas.toDataURL();
+    }
+
+    function toggleBgPattern(){ // place a subtle background by drawing a pattern underneath current image
+      const w = canvas.width/(window.devicePixelRatio||1), h = canvas.height/(window.devicePixelRatio||1);
+      ctx.save(); ctx.globalCompositeOperation='destination-over';
+      ctx.fillStyle = '#f6f7f9'; ctx.fillRect(0,0,w,h);
+      // small dots
+      ctx.fillStyle='rgba(0,0,0,0.03)'; for(let x=0;x<w;x+=20) for(let y=0;y<h;y+=20) ctx.fillRect(x+1,y+1,1,1);
+      ctx.restore(); saveHistory();
+    }
+
+    // ====== أدوات واجهة المستخدم و أحداث الماوس ======
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive:false});
+    canvas.addEventListener('mousemove', moveDraw);
+    canvas.addEventListener('touchmove', moveDraw, {passive:false});
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('touchend', endDraw);
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', e=>{
+      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); }
+      if(e.key.toLowerCase()==='s'){ e.preventDefault(); saveBtn.click(); }
+    });
+
+    // helper: load initial size and palette
+    resizeCanvas(); buildPalette();
+
+    // Capture initial blank state
+    setTimeout(()=>{ saveHistory(); }, 300);
+
+    // Utility to load data URL into canvas (small wrapper)
+    function loadFromDataURL(data){ const img = new Image(); img.onload = ()=>{ ctx.clearRect(0,0,canvas.width/(window.devicePixelRatio||1), canvas.height/(window.devicePixelRatio||1)); ctx.drawImage(img,0,0, canvas.width/(window.devicePixelRatio||1), canvas.height/(window.devicePixelRatio||1)); }; img.src = data; }
+
+  </script>
+</body>
+</html>
